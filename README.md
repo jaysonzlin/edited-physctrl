@@ -47,6 +47,7 @@ Due to the large storage of original data, it's difficult for us to release the 
    python3 generate_mpm_data.py	--material elastic --start_idx 0 --end_idx 1 --visualization 
    python3 generate_mpm_data.py	--material plasticine --start_idx 0 --end_idx 1 --visualization
    python3 generate_mpm_data.py	--material sand --start_idx 0 --end_idx 1 --visualization
+   python3 generate_rigid_data.py --start_idx 0 --end_idx 1 --visualization
    ```
 
    You can view the simulated trajectories in `src/data_generation/data/objaverse/visualization`
