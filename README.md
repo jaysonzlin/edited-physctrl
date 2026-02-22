@@ -83,6 +83,7 @@ accelerate launch --config_file configs/acc/8gpu.yaml train.py --config configs/
 ```
 
 ### Evaluate Trajectory Generation
+The evaluation set can be found [here](https://huggingface.co/datasets/chenwang/physctrl/resolve/main/testset.zip).
 ```bash
 python3 volume_iou.py --split_lst EVAL_DATASET_PATH --pred_path PRED_RESULTS_PATH
 ```
