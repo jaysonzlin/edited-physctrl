@@ -1,4 +1,5 @@
 import os 
+os.environ["U2NET_HOME"] = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../checkpoints"))
 import rembg
 import numpy as np
 import cv2

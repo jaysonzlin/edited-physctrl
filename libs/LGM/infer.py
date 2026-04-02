@@ -10,6 +10,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.transforms.functional as TF
 from safetensors.torch import load_file
+import os
+os.environ["U2NET_HOME"] = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../checkpoints"))
 import rembg
 
 import kiui

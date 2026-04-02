@@ -1,6 +1,8 @@
 import cv2
 import numpy as np
 import torch
+import os
+os.environ["U2NET_HOME"] = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../checkpoints"))
 from PIL import Image
 from rembg import remove
 from segment_anything import SamPredictor, sam_model_registry
