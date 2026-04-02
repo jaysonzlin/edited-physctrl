@@ -23,7 +23,7 @@ from models.cogvideox_tracking import CogVideoXImageToVideoPipelineTracking
 
 # from submodules.MoGe.moge.model import MoGeModel
 from image_gen_aux import DepthPreprocessor
-from moviepy.editor import ImageSequenceClip
+from moviepy import ImageSequenceClip
 from typing import Any, Dict, Optional, Tuple, Union, List, Callable
 
 class DiffusionAsShaderPipeline:

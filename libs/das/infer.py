@@ -7,7 +7,7 @@ import torch
 import numpy as np
 from PIL import Image
 import torchvision.transforms as transforms
-from moviepy.editor import VideoFileClip
+from moviepy import VideoFileClip
 from diffusers.utils import load_image, load_video
 
 from models.pipelines import DiffusionAsShaderPipeline, CameraMotionGenerator, ObjectMotionGenerator

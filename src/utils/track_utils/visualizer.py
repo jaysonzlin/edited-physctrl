@@ -13,15 +13,10 @@ import flow_vis
 from matplotlib import cm
 import torch.nn.functional as F
 import torchvision.transforms as transforms
-import pkg_resources
 try:
-    moviepy_version = pkg_resources.get_distribution("moviepy").version
-    if moviepy_version >= "2.0.0":
-        from moviepy import ImageSequenceClip
-    else:
-        from moviepy.editor import ImageSequenceClip
+    from moviepy import ImageSequenceClip
 except ImportError:
-    raise ImportError("moviepy is required for video processing. Please install it with: pip install moviepy==1.0.3")
+    raise ImportError("moviepy is required for video processing. Please install it with: pip install moviepy>=2.2.1")
 import matplotlib.pyplot as plt
 
 
