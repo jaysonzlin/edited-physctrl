@@ -8,6 +8,21 @@
 ## 📦 Installation
 
 ```bash
+# Harvard FASRC instructions
+mamba create -p /path/to/conda/envs python=3.10
+mamba activate /path/to/conda/envs
+# CAUTION: change it to your CUDA version
+mamba install pytorch-gpu==2.5.1 torchvision==0.20.1 torchaudio==2.5.1 xformers cuda-version=12.8 -c conda-forge
+# Install CUDA toolkit for nvcc and gcc
+mamba install -c nvidia cuda-toolkit=12.8
+# Build torch cluster from source to match GPU CUDA version
+pip install torch-cluster --no-binary torch-cluster --no-build-isolation
+pip install git+https://github.com/ashawkey/diff-gaussian-rasterization.git --no-build-isolation
+pip install -r requirements.txt
+```
+
+```bash
+# Original instructions
 python3.10 -m venv physctrl
 source physctrl/bin/activate
 # CAUTION: change it to your CUDA version
