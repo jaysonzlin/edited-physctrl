@@ -5,3 +5,6 @@
 src/data_generation/data/  
 outputs/
 checkpoints/
+
+# OS specific files
+.DS_Store
