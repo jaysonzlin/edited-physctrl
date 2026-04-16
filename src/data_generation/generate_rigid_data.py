@@ -11,6 +11,14 @@ import gc
 import json
 import trimesh
 
+# --- MONKEY PATCH TO BYPASS EGL CRASH ON HEADLESS CLUSTERS ---
+# We don't render 2D images, so we disable the offscreen pyrender to prevent the Invalid device ID (0) issue.
+import genesis.vis.rasterizer
+import genesis.vis.visualizer
+genesis.vis.rasterizer.Rasterizer.build = lambda self: None
+genesis.vis.rasterizer.Rasterizer.destroy = lambda self: None
+# -------------------------------------------------------------
+
 from utils.seeding import seed_everything
 from utils.loading import load_mesh
 from utils.visualization import save_pointcloud_video_wdp as save_pointcloud_video
@@ -118,7 +126,7 @@ def run_generation(args):
 
     output_dir = f'{args.base_dir}/{args.dataset_type}/{args.output_dir}'
     os.makedirs(f'{output_dir}/h5', exist_ok=True)
-    import pdb; pdb.set_trace();
+    # import pdb; pdb.set_trace();
     if args.visualization:
         os.makedirs(f'{output_dir}/visualization', exist_ok=True)
 
