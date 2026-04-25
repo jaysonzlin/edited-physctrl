@@ -59,6 +59,57 @@ def normalize_points(points, size=0.5, output_center=[0, 0, 0], random_rotation=
     points += np.array(output_center)
     return points, R
 
+def generate_rotation_matrix_uniform():
+    """
+    Generates a truly uniform 3D rotation matrix using QR decomposition.
+    This avoids the 'clumping' effect of Euler angles.
+    """
+    # Step 1: Create a 3x3 matrix with random Gaussian values
+    z = np.random.randn(3, 3)
+    
+    # Step 2: Use QR decomposition
+    # Q is an orthogonal matrix (a rotation/reflection)
+    q, r = np.linalg.qr(z)
+    
+    # Step 3: Fix the 'reflection' issue
+    # QR decomposition can return a matrix that flips the data (determinant -1).
+    # We multiply by the sign of the diagonal of R to ensure a proper rotation.
+    d = np.diag(r)
+    ph = d / np.abs(d)
+    q = q @ np.diag(ph)
+    
+    return q
+
+def normalize_points_genesis(points, size=0.5, output_center=[0, 0, 0], random_rotation='simple'):
+    bmax = points.max(axis=0)
+    bmin = points.min(axis=0)
+    center = (bmax + bmin) / 2
+    
+    # Calculate the maximum distance from the center to any vertex (the radius)
+    radius = np.max(np.linalg.norm(points - center, axis=1))
+    
+    # Avoid division by zero
+    if radius < 1e-8:
+        radius = 1.0
+
+    # Scale points so the new diameter equals 'size' (radius equals size / 2)
+    points = (size / 2.0) * (points - center) / radius
+
+    if random_rotation == 'full':
+        R = generate_rotation_matrix()
+        points = points @ R.T
+    elif random_rotation == 'simple':
+        R = generate_rotation_matrix_simple()
+        points = points @ R.T
+    elif random_rotation == 'uniform':
+        R = generate_rotation_matrix_uniform()
+        points = points @ R.T
+    else:
+        R = np.eye(3)
+        
+    points += np.array(output_center)
+    return points, R
+
 def transform2origin(v, size=1):
     bmax = v.max(axis=0)
     bmin = v.min(axis=0)

@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d.art3d import Line3DCollection
 import os
 import json
 
@@ -171,6 +172,123 @@ def save_pointcloud_video_wdp(points, drag_points, save_path, fps=48, point_colo
 
     plt.close()
     frames[0].save(save_path, save_all=True, append_images=frames[1:], fps=fps, loop=0)
+
+def save_pointcloud_video_genesis(points, drag_points, save_path, fps=48, point_color='blue', grid_lim=4, vertical_axis='z',
+    elev=10, azim=45, floor_height=None, show_trajectory=False, trajectory_len=5):
+    
+    # Configure the figure
+    fig = plt.figure(figsize=(6, 6))
+    ax = fig.add_subplot(111, projection='3d')
+    ax.set_box_aspect([1, 1, 1])
+    
+    axis_min = -1.0 # Focus tightly around the floor/origin area
+    axis_max = grid_lim
+    
+    if floor_height is not None:
+        axis_min = min(axis_min, floor_height - 0.5)
+    ax.view_init(elev=elev, azim=azim, vertical_axis=vertical_axis)
+    
+    # Plot and save each frame
+    cmap_1 = plt.colormaps.get_cmap('cool')
+    cmap_2 = plt.colormaps.get_cmap('autumn')
+    frames = []
+    
+    for i in range(points.shape[0]):
+        
+        frame_points = points[i]
+        depth_frame_points = compute_depth(frame_points, elev=elev, azim=azim)
+        # depth_frame_points_normalized = (depth_frame_points - depth_frame_points.min()) / \
+        #     (depth_frame_points.max() - depth_frame_points.min())
+        # color_frame_points = cmap_1(depth_frame_points_normalized)
+        
+        # Normalize each object (2048 points) separately for maximum sensitivity
+        # This ensures each object has a full color gradient across its own surface
+        n_pts_per_obj = 2048
+        color_frame_points = np.zeros((frame_points.shape[0], 4))
+        
+        for obj_idx in range(0, frame_points.shape[0], n_pts_per_obj):
+            obj_depths = depth_frame_points[obj_idx : obj_idx + n_pts_per_obj]
+            d_min, d_max = obj_depths.min(), obj_depths.max()
+            if d_max - d_min < 1e-6:
+                obj_norm = np.zeros_like(obj_depths)
+            else:
+                obj_norm = (obj_depths - d_min) / (d_max - d_min)
+            color_frame_points[obj_idx : obj_idx + n_pts_per_obj] = cmap_1(obj_norm)
+        if len(drag_points) > 0:
+            frame_points_drag = drag_points[i]
+            depth_frame_points_drag = compute_depth(frame_points_drag, elev=elev, azim=azim)
+            depth_frame_points_drag_normalized = (depth_frame_points_drag - depth_frame_points_drag.min()) / \
+                (depth_frame_points_drag.max() - depth_frame_points_drag.min())
+            color_frame_points_drag = cmap_2(np.ones_like(depth_frame_points_drag_normalized) * -10)
+            all_points = np.concatenate([frame_points, frame_points_drag], axis=0)
+            all_color = np.concatenate([color_frame_points, color_frame_points_drag], axis=0)
+        else:
+            all_points, all_color = frame_points, color_frame_points
+            
+        ax.clear()
+        
+        # Draw tiny axes at origin
+        ax.plot([0, 0.5], [0, 0], [0, 0], color='red', linewidth=1, alpha=0.8, zorder=10)   # X
+        ax.plot([0, 0], [0, 0.5], [0, 0], color='green', linewidth=1, alpha=0.8, zorder=10) # Y
+        ax.plot([0, 0], [0, 0], [0, 0.5], color='blue', linewidth=1, alpha=0.8, zorder=10)  # Z
+        
+        # Reference dots for a 4-meter total span (-2 to 2)
+        grid_vals = np.arange(-2, 2.1, 0.25)
+        ax.scatter(grid_vals, np.zeros_like(grid_vals), np.zeros_like(grid_vals), color='red', s=2, alpha=0.5, zorder=5)
+        ax.scatter(np.zeros_like(grid_vals), grid_vals, np.zeros_like(grid_vals), color='green', s=2, alpha=0.5, zorder=5)
+        ax.scatter(np.zeros_like(grid_vals), np.zeros_like(grid_vals), grid_vals, color='blue', s=2, alpha=0.5, zorder=5)
+        
+        # Draw floor if specified
+        if floor_height is not None:
+            # Create a large plane for the floor
+            floor_size = 10.0
+            # Use a grid for the gradient
+            c = np.linspace(-floor_size, floor_size, 10) # Low res is fine for solid color
+            C1, C2 = np.meshgrid(c, c)
+            
+            if vertical_axis == 'y':
+                X, Y, Z = C1, np.full_like(C1, floor_height), C2
+            else: # vertical_axis == 'z'
+                X, Y, Z = C1, C2, np.full_like(C1, floor_height)
+            
+            ax.plot_surface(X, Y, Z, color='red', alpha=0.1, zorder=0, shade=False, antialiased=False, linewidth=0)
+
+        if show_trajectory:
+            t_start = max(0, i - trajectory_len)
+            if i > t_start:
+                # Use Line3DCollection for efficient line plotting
+                # Shape of segments: (N_points, L_trajectory, 3)
+                segments = points[t_start:i+1].transpose(1, 0, 2)
+                line_collection = Line3DCollection(segments, colors=color_frame_points, 
+                                                   linewidths=0.5, alpha=0.01, zorder=1)
+                ax.add_collection3d(line_collection)
+
+        ax.scatter(all_points[:, 0], all_points[:, 1], all_points[:, 2],
+            c=all_color, s=1, depthshade=False, alpha=0.9)
+             
+        ax.axis('off')  # Turn off the axes
+        ax.grid(False)  # Hide the grid
+        
+        # Zoomed in on the action
+        # X and Y: -1.0 to 1.0 (2m total), Z: -0.2 to 1.0
+        ax.set_xlim(-1.0, 1.0)
+        ax.set_ylim(-1.0, 1.0)
+        ax.set_zlim(-0.2, 1.0)
+
+        # Set box aspect for the new ranges (X:2, Y:2, Z:1.2)
+        ax.set_box_aspect([2, 2, 1.2])
+        
+        # Adjust margins for tight layout
+        plt.subplots_adjust(left=0, right=1, top=1, bottom=0)
+
+        # Save frame
+        buf = BytesIO()
+        plt.savefig(buf, bbox_inches='tight', pad_inches=0.0, dpi=300)
+        buf.seek(0)
+        frames.append(Image.open(buf))
+
+    plt.close()
+    frames[0].save(save_path, save_all=True, append_images=frames[1:], duration=1000/fps, loop=0)
 
 def save_pointcloud_json(points, output_json):
     """
