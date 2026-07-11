@@ -82,6 +82,7 @@ def main(args):
 
     device = torch.device(args.device or ("cuda" if torch.cuda.is_available() else "cpu"))
     output_path = Path(args.output) if args.output else default_output_path(checkpoint_dir, sample_path)
+    config = OmegaConf.merge(OmegaConf.structured(PCTrainingConfig), OmegaConf.load(config_path))
     model = load_checkpoint_model(checkpoint_dir, config_path)
 
     with h5py.File(sample_path, "r") as source:
