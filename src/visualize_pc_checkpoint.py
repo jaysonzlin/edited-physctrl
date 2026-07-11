@@ -1,6 +1,7 @@
 """Generate a predicted-versus-ground-truth point-cloud MP4 from a PC DiT checkpoint."""
 
 import argparse
+from contextlib import nullcontext
 from pathlib import Path
 
 import h5py
@@ -33,6 +34,21 @@ def combine_initial_and_future(init_pc, predicted_future):
     """Prepend the initial frame after aligning it with the sampled trajectory device."""
     initial_frame = init_pc.to(predicted_future.device).unsqueeze(1)
     return torch.cat([initial_frame, predicted_future], dim=1)
+
+
+def inference_autocast_dtype(device, mixed_precision):
+    """Return the CUDA autocast dtype needed to match a BF16 training run."""
+    if device.type == "cuda" and mixed_precision == "bf16":
+        return torch.bfloat16
+    return None
+
+
+def inference_autocast_context(device, mixed_precision):
+    """Enable the run's supported inference autocast mode, if any."""
+    dtype = inference_autocast_dtype(device, mixed_precision)
+    if dtype is None:
+        return nullcontext()
+    return torch.autocast(device_type=device.type, dtype=dtype)
 
 
 def load_checkpoint_model(checkpoint_dir, config_path):
@@ -79,15 +95,16 @@ def main(args):
         DDIMScheduler(num_train_timesteps=1000, prediction_type="sample", clip_sample=False),
     )
     generator = torch.Generator(device=device).manual_seed(args.seed) if args.seed is not None else None
-    predicted_future = pipeline(
-        init_pc=init_pc,
-        initial_linear_velocity=linear_velocity,
-        initial_angular_velocity=angular_velocity,
-        device=device,
-        num_inference_steps=args.num_inference_steps,
-        guidance_scale=args.guidance_scale,
-        generator=generator,
-    )
+    with inference_autocast_context(device, config.mixed_precision):
+        predicted_future = pipeline(
+            init_pc=init_pc,
+            initial_linear_velocity=linear_velocity,
+            initial_angular_velocity=angular_velocity,
+            device=device,
+            num_inference_steps=args.num_inference_steps,
+            guidance_scale=args.guidance_scale,
+            generator=generator,
+        )
     predicted_sequence = combine_initial_and_future(init_pc, predicted_future).squeeze(0).cpu().numpy()
     save_pointcloud_comparison_mp4(predicted_sequence, ground_truth, output_path, fps=args.fps)
     print(f"Saved comparison video to {output_path}")

@@ -1,6 +1,11 @@
 import torch
 
-from visualize_pc_checkpoint import combine_initial_and_future, default_output_path, resolve_sample_path
+from visualize_pc_checkpoint import (
+    combine_initial_and_future,
+    default_output_path,
+    inference_autocast_dtype,
+    resolve_sample_path,
+)
 
 
 def test_resolve_sample_path_accepts_sample_directory(tmp_path):
@@ -27,3 +32,12 @@ def test_combine_initial_and_future_uses_the_prediction_device():
 
     assert sequence.shape == (1, 49, 1, 8, 3)
     assert sequence.device.type == "meta"
+
+
+def test_inference_autocast_dtype_matches_bf16_cuda_training():
+    assert inference_autocast_dtype(torch.device("cuda"), "bf16") is torch.bfloat16
+
+
+def test_inference_autocast_dtype_is_disabled_for_cpu_or_non_bf16_runs():
+    assert inference_autocast_dtype(torch.device("cpu"), "bf16") is None
+    assert inference_autocast_dtype(torch.device("cuda"), "no") is None
