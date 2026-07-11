@@ -21,6 +21,8 @@ genesis-world==0.2.1
 libigl==2.4.1
 
 matplotlib
+imageio
+imageio-ffmpeg
 pyyaml
 h5py
 einops
@@ -34,6 +36,7 @@ cython
 rich
 munch 
 omegaconf
+wandb
 flow_vis
 kiui
 segment_anything

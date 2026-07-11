@@ -1,0 +1,32 @@
+output_dir: ./outputs/pc_dit_${model_config.n_layers}layers
+logging_dir: logs
+vis_dir: vis
+report_to: wandb
+tracker_project_name: pc_dit
+seed: 0
+train_batch_size: 1
+num_train_epochs: 100
+max_train_steps: 60000
+gradient_accumulation_steps: 1
+learning_rate: 1.e-4
+lr_warmup_steps: 100
+adam_beta1: 0.9
+adam_beta2: 0.999
+adam_weight_decay: 1.e-2
+adam_epsilon: 1.e-8
+max_grad_norm: 1.0
+mixed_precision: bf16
+dataloader_num_workers: 8
+checkpointing_steps: 2500
+resume_from_checkpoint: null
+condition_drop_rate: 0.0
+pc_size: 2048
+model_config:
+  n_layers: 8
+  latent_dim: 256
+  frame_cond: true
+  point_embed: true
+  pred_offset: true
+  transformer_block: SpatialTemporalTransformerBlock
+train_dataset:
+  dataset_path: DATASET_FOLDER

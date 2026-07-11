@@ -72,6 +72,35 @@ class TrainingConfig:
     model_config: Dict
     pc_size: int
 
+
+@dataclass
+class PCTrainingConfig:
+    output_dir: str
+    logging_dir: str
+    vis_dir: str
+    report_to: Optional[str]
+    tracker_project_name: str
+    seed: Optional[int]
+    train_batch_size: int
+    num_train_epochs: int
+    max_train_steps: Optional[int]
+    gradient_accumulation_steps: int
+    learning_rate: float
+    lr_warmup_steps: int
+    adam_beta1: float
+    adam_beta2: float
+    adam_weight_decay: float
+    adam_epsilon: float
+    max_grad_norm: Optional[float]
+    mixed_precision: Optional[str]
+    dataloader_num_workers: int
+    checkpointing_steps: int
+    resume_from_checkpoint: Optional[str]
+    condition_drop_rate: float
+    pc_size: int
+    model_config: Dict
+    train_dataset: Dict
+
 @dataclass
 class TestingConfig:
     dataloader_num_workers: int 
