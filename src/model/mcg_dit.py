@@ -580,12 +580,14 @@ class MCG_DIT(nn.Module):
         self.max_num_forces = 1
         self.model_config = model_config
 
-        self.cond_seq_length = 4
+        self.cond_seq_length = 8
 
-        self.v1_cond_encoder = nn.Linear(3, self.latent_dim)
-        self.v2_cond_encoder = nn.Linear(3, self.latent_dim)
-        self.w1_cond_encoder = nn.Linear(3, self.latent_dim)
-        self.w2_cond_encoder = nn.Linear(3, self.latent_dim)
+        self.v_cond_encoder = nn.Linear(3, self.latent_dim)
+        self.w_cond_encoder = nn.Linear(3, self.latent_dim)
+        self.rho_cond_encoder = nn.Linear(1, self.latent_dim)
+        self.friction_cond_encoder = nn.Linear(1, self.latent_dim)
+        
+        self.obj_emb = nn.Embedding(2, self.latent_dim)
 
         self.gravity_emb = False
         self.class_dropout_prob = model_config.get('class_dropout_prob', 0.0)
@@ -603,7 +605,7 @@ class MCG_DIT(nn.Module):
     def enable_gradient_checkpointing(self):
         self.dit._set_gradient_checkpointing(True)
 
-    def forward(self, x, timesteps, init_pc, v1, v2, w1, w2, y=None, null_emb=None):
+    def forward(self, x, timesteps, init_pc, v1, v2, w1, w2, rho1, rho2, friction1, friction2, y=None, null_emb=None):
         
         """
         x: [batch_size, frame, n_points, n_feats], denoted x_t in the paper
@@ -617,11 +619,17 @@ class MCG_DIT(nn.Module):
         v2 = v2.unsqueeze(1) if v2.ndim == 2 else v2
         w1 = w1.unsqueeze(1) if w1.ndim == 2 else w1
         w2 = w2.unsqueeze(1) if w2.ndim == 2 else w2
+        rho1 = rho1.unsqueeze(1) if rho1.ndim == 2 else rho1
+        rho2 = rho2.unsqueeze(1) if rho2.ndim == 2 else rho2
+        friction1 = friction1.unsqueeze(1) if friction1.ndim == 2 else friction1
+        friction2 = friction2.unsqueeze(1) if friction2.ndim == 2 else friction2
 
         indices = None
         
-        encoder_hidden_states = torch.cat([self.v1_cond_encoder(v1), self.v2_cond_encoder(v2),
-            self.w1_cond_encoder(w1), self.w2_cond_encoder(w2)], axis=1) 
+        encoder_hidden_states = torch.cat([self.v_cond_encoder(v1), self.v_cond_encoder(v2),
+            self.w_cond_encoder(w1), self.w_cond_encoder(w2),
+            self.rho_cond_encoder(rho1), self.rho_cond_encoder(rho2),
+            self.friction_cond_encoder(friction1), self.friction_cond_encoder(friction2)], axis=1) 
 
         if null_emb is not None:
             encoder_hidden_states = encoder_hidden_states * null_emb
@@ -631,6 +639,11 @@ class MCG_DIT(nn.Module):
 
         hidden_states = self.input_encoder(x.reshape(-1, n_points,
             n_feats)).reshape(bs, -1, n_points, self.latent_dim)
+            
+        obj_ids = torch.zeros(n_points, dtype=torch.long, device=x.device)
+        obj_ids[2048:] = 1
+        obj_embed = self.obj_emb(obj_ids).view(1, 1, n_points, self.latent_dim)
+        hidden_states = hidden_states + obj_embed
 
         output = self.dit(hidden_states, encoder_hidden_states, timesteps, class_labels=y).reshape(bs, -1, n_points, 3)[:, self.cond_frame:]
         output = output + init_pc.unsqueeze(1) if self.pred_offset else output
@@ -641,10 +654,10 @@ if __name__ == "__main__":
 
     # Diffusion
     from omegaconf import OmegaConf
-    from options import MCGConfig
+    from options import TrainingMCGConfig
     cfg_path = './configs/test_config.yaml'
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    schema = OmegaConf.structured(MCGConfig)
+    schema = OmegaConf.structured(TrainingMCGConfig)
     cfg = OmegaConf.load(cfg_path)
     cfg = OmegaConf.merge(schema, cfg)
     n_training_frames = cfg.train_dataset.n_training_frames
@@ -659,6 +672,10 @@ if __name__ == "__main__":
     v2 = torch.randn(1, 3).to(device).to(torch.float32)
     w1 = torch.randn(1, 3).to(device).to(torch.float32)
     w2 = torch.randn(1, 3).to(device).to(torch.float32)
+    rho1 = torch.randn(1, 1).to(device).to(torch.float32)
+    rho2 = torch.randn(1, 1).to(device).to(torch.float32)
+    friction1 = torch.randn(1, 1).to(device).to(torch.float32)
+    friction2 = torch.randn(1, 1).to(device).to(torch.float32)
 
     x = nn.Parameter(x)
 
@@ -673,7 +690,7 @@ if __name__ == "__main__":
             if device.type == 'cuda':
                 torch.cuda.synchronize()
             t0 = time.time()
-            output = model(x, timesteps, init_pc, v1, v2, w1, w2)
+            output = model(x, timesteps, init_pc, v1, v2, w1, w2, rho1, rho2, friction1, friction2)
             loss = output.sum()
             loss.backward()
             if device.type == 'cuda':
@@ -682,6 +699,6 @@ if __name__ == "__main__":
             if i > 10:
                 t_total += t1 - t0
             print(t1 - t0)
-            # break # Comment out for cluster test
+            break # Comment out for cluster test
 
     print("Average time: ", t_total / 90)

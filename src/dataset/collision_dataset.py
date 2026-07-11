@@ -35,8 +35,11 @@ def compute_kinematics(P, Q, dt=0.0417, has_gravity=False):
 class CollisionDataset(Dataset):
     def __init__(self, split, cfg):
         self.cfg = cfg
-        self.dataset_path = cfg.dataset_path
         self.split = split
+        if split == 'val':
+            self.dataset_path = cfg.get('val_dataset_path', cfg.dataset_path)
+        else:
+            self.dataset_path = cfg.dataset_path
         self.mode = cfg.mode # 'ae' or 'diff'
         self.n_frames_interval = cfg.n_frames_interval
         self.n_training_frames = cfg.n_training_frames
@@ -105,7 +108,14 @@ class CollisionDataset(Dataset):
                     if key == 'gravity':
                         datapoint_data[key] = torch.from_numpy(data).bool()
                     else:
-                        datapoint_data[key] = torch.from_numpy(data).float()
+                        tensor_data = torch.from_numpy(data).float()
+                        if key in ['v1', 'v2', 'w1', 'w2']:
+                            tensor_data = tensor_data / 2.0
+                        elif key in ['p1', 'p2', 'floor_height']:
+                            tensor_data = tensor_data / 5.0
+                        if key in ['rho1', 'rho2', 'friction1', 'friction2']:
+                            tensor_data = tensor_data.view(-1)
+                        datapoint_data[key] = tensor_data
 
             if 'x' in datapoint_metas:
                 x_raw = torch.from_numpy(np.array(datapoint_metas['x']))
@@ -115,8 +125,8 @@ class CollisionDataset(Dataset):
                 
                 points_src = x_raw[raw_start_idx : raw_start_idx + 1]
                 points_tgt = x_raw[raw_start_idx + self.n_frames_interval : raw_end_idx : self.n_frames_interval]
-                datapoint_data['points_src'] = points_src.float()
-                datapoint_data['points_tgt'] = points_tgt.float()
+                datapoint_data['points_src'] = points_src.float() / 5.0
+                datapoint_data['points_tgt'] = points_tgt.float() / 5.0
                 
                 if start_idx > 0:
                     has_gravity = False
@@ -126,13 +136,13 @@ class CollisionDataset(Dataset):
                     P1 = x_raw[raw_start_idx, :2048]
                     Q1 = x_raw[raw_start_idx + 1, :2048]
                     v1_dyn, w1_dyn = compute_kinematics(P1, Q1, has_gravity=has_gravity)
-                    datapoint_data['v1'] = v1_dyn.float()
-                    datapoint_data['w1'] = w1_dyn.float()
+                    datapoint_data['v1'] = v1_dyn.float() / 2.0
+                    datapoint_data['w1'] = w1_dyn.float() / 2.0
                     
                     P2 = x_raw[raw_start_idx, 2048:]
                     Q2 = x_raw[raw_start_idx + 1, 2048:]
                     v2_dyn, w2_dyn = compute_kinematics(P2, Q2, has_gravity=has_gravity)
-                    datapoint_data['v2'] = v2_dyn.float()
-                    datapoint_data['w2'] = w2_dyn.float()
+                    datapoint_data['v2'] = v2_dyn.float() / 2.0
+                    datapoint_data['w2'] = w2_dyn.float() / 2.0
 
         return datapoint_data, datapoint_info

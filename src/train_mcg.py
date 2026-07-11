@@ -38,13 +38,13 @@ from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version, is_wandb_available, make_image_grid
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.optimization import get_cosine_schedule_with_warmup
-from pipeline_traj import TrajPipeline
+from pipeline_mcg import MCGPipeline
 from accelerate.utils import DistributedDataParallelKwargs
 
 from model.mcg_dit import MCG_DIT
 from dataset.collision_dataset import CollisionDataset
 
-from utils.visualization import save_pointcloud_video, save_pointcloud_json, save_threejs_html
+from utils.visualization import save_pointcloud_video_genesis, save_pointcloud_video, save_pointcloud_json, save_threejs_html
 from utils.physics import loss_momentum
 
 logger = get_logger(__name__)
@@ -157,9 +157,8 @@ def main(args):
     train_dataset = CollisionDataset('train', args.train_dataset)
     train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=args.train_batch_size, shuffle=True, num_workers=args.dataloader_num_workers, pin_memory=True)
 
-    # Uncomment for validation
-    # val_dataset = CollisionDataset('val', args.train_dataset)
-    # val_dataloader = torch.utils.data.DataLoader(val_dataset, batch_size=args.eval_batch_size, shuffle=False, num_workers=args.dataloader_num_workers)
+    val_dataset = CollisionDataset('val', args.train_dataset)
+    val_dataloader = torch.utils.data.DataLoader(val_dataset, batch_size=args.eval_batch_size, shuffle=False, num_workers=args.dataloader_num_workers)
 
     # Scheduler and math around the number of training steps.
     # Check the PR https://github.com/huggingface/diffusers/pull/8312 for detailed explanation.
@@ -271,30 +270,50 @@ def main(args):
                 # Add noise to the latents according to the noise magnitude at each timestep
                 # (this is the forward diffusion process)
                 noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
+                
+                if args.model_config.get('cond_on_first_pc', False):
+                    noisy_latents[:, :, :2048, :] = latents[:, :, :2048, :]
 
                 null_emb = None
 
                 # Predict the noise residual
-                pred_sample = model(noisy_latents, timesteps, batch['points_src'], batch['v1'], batch['v2'], batch['w1'], batch['w2'], y=None, null_emb=null_emb)
+                pred_sample = model(noisy_latents, timesteps, batch['points_src'], batch['v1'], batch['v2'], batch['w1'], batch['w2'], batch['rho1'], batch['rho2'], batch['friction1'], batch['friction2'], y=None, null_emb=null_emb)
                 losses = {}
 
-                loss = F.mse_loss(pred_sample.float(), latents.float())
-                losses['xyz'] = loss.detach().item()
+                if args.model_config.get('cond_on_first_pc', False):
+                    loss = F.mse_loss(pred_sample[:, :, 2048:].float(), latents[:, :, 2048:].float())
+                    losses['xyz'] = loss.detach().item()
 
-                target_vel = latents[:, 1:] - latents[:, :-1]
-                pred_vel = (pred_sample[:, 1:] - pred_sample[:, :-1])
-                loss_vel = F.mse_loss(target_vel.float(), pred_vel.float())
-                losses['loss_vel'] = loss_vel.detach().item()
-                loss = loss + loss_vel
+                    target_vel = latents[:, 1:, 2048:] - latents[:, :-1, 2048:]
+                    pred_vel = (pred_sample[:, 1:, 2048:] - pred_sample[:, :-1, 2048:])
+                    loss_vel = F.mse_loss(target_vel.float(), pred_vel.float())
+                    losses['loss_vel'] = loss_vel.detach().item()
+                    loss = loss + loss_vel
 
+                    if args.model_config.floor_cond:
+                        floor_height = batch['floor_height'].reshape(bsz, 1, 1) # (B, 1, 1)
+                        sample_min_height = torch.amin(latents[:, :, 2048:, 2], dim=(1, 2)).reshape(bsz, 1, 1)
+                        floor_height = torch.minimum(floor_height, sample_min_height)
+                        loss_floor = (torch.relu(floor_height - pred_sample[:, :, 2048:, 2]) ** 2).mean()
+                        losses['loss_floor'] = loss_floor.detach().item()
+                        loss += loss_floor
+                else:
+                    loss = F.mse_loss(pred_sample.float(), latents.float())
+                    losses['xyz'] = loss.detach().item()
 
-                if args.model_config.floor_cond:
-                    floor_height = batch['floor_height'].reshape(bsz, 1, 1) # (B, 1, 1)
-                    sample_min_height = torch.amin(latents[..., 1], dim=(1, 2)).reshape(bsz, 1, 1)
-                    floor_height = torch.minimum(floor_height, sample_min_height)
-                    loss_floor = (torch.relu(floor_height - pred_sample[..., 1]) ** 2).mean()
-                    losses['loss_floor'] = loss_floor.detach().item()
-                    loss += loss_floor
+                    target_vel = latents[:, 1:] - latents[:, :-1]
+                    pred_vel = (pred_sample[:, 1:] - pred_sample[:, :-1])
+                    loss_vel = F.mse_loss(target_vel.float(), pred_vel.float())
+                    losses['loss_vel'] = loss_vel.detach().item()
+                    loss = loss + loss_vel
+
+                    if args.model_config.floor_cond:
+                        floor_height = batch['floor_height'].reshape(bsz, 1, 1) # (B, 1, 1)
+                        sample_min_height = torch.amin(latents[..., 2], dim=(1, 2)).reshape(bsz, 1, 1)
+                        floor_height = torch.minimum(floor_height, sample_min_height)
+                        loss_floor = (torch.relu(floor_height - pred_sample[..., 2]) ** 2).mean()
+                        losses['loss_floor'] = loss_floor.detach().item()
+                        loss += loss_floor
 
                 # Gather the losses across all processes for logging (if we use distributed training).
                 avg_loss = accelerator.gather(loss.repeat(cfg.train_batch_size)).mean()
@@ -340,16 +359,35 @@ def main(args):
                         accelerator.save_state(save_path)
                         logger.info(f"Saved state to {save_path}")
             
-                if global_step % cfg.validation_steps == 0 or global_step == 1:
+                if global_step % args.validation_steps == 0 or global_step == 1:
                     if accelerator.is_main_process:
                         model.eval()
-                        pipeline = TrajPipeline(model=accelerator.unwrap_model(model), scheduler=DDIMScheduler.from_config(noise_scheduler.config))
-                        logger.info(
-                            f"Running validation... \n."
-                        )
+                        pipeline = MCGPipeline(model=accelerator.unwrap_model(model), scheduler=DDIMScheduler.from_config(noise_scheduler.config))
+                        logger.info(f"Running validation... \n.")
                         for i, (batch, _) in enumerate(val_dataloader):
-                            # Placeholder for validation
-                            pass
+                            with torch.autocast("cuda"):
+                                gs = [1.0]
+                                for guidance_scale in gs:
+                                    output = pipeline(
+                                        batch['points_src'], batch['v1'], batch['v2'], batch['w1'], batch['w2'], 
+                                        batch['rho1'], batch['rho2'], batch['friction1'], batch['friction2'], 
+                                        generator=torch.Generator().manual_seed(args.seed), 
+                                        device=accelerator.device,
+                                        batch_size=args.eval_batch_size, 
+                                        n_frames=args.train_dataset.n_training_frames, 
+                                        guidance_scale=guidance_scale,
+                                        gt_traj=batch['points_tgt'] if args.model_config.get('cond_on_first_pc', False) else None
+                                    )
+                                    output = output.cpu().numpy() * 5.0
+                                    tgt = batch['points_tgt'].cpu().numpy() * 5.0
+                                    save_dir = os.path.join(vis_dir, f'{global_step:06d}')
+                                    os.makedirs(save_dir, exist_ok=True)
+                                    for j in range(output.shape[0]):
+                                        save_pointcloud_video_genesis(
+                                            output[j:j+1].squeeze(), [], 
+                                            os.path.join(save_dir, f'{i*batch["points_src"].shape[0] + j}_{guidance_scale}.gif'), fps=10
+                                        )
+                                torch.cuda.empty_cache()
                         model.train()
 
             logs = losses
