@@ -89,10 +89,9 @@ There is intentionally no validation split or validation loop. Set
 inference; its default is `0.0`.
 
 At the end of every 100th epoch, the trainer samples one training example and
-saves a generated trajectory to `<output_dir>/<vis_dir>/epoch-<epoch>.mp4`.
-It also saves `<output_dir>/<vis_dir>/epoch-<epoch>-comparison.mp4`, which
-places prediction and ground truth side by side and reports each frame's
-position error (PE) and mean per-point error (ME).
+saves `<output_dir>/<vis_dir>/epoch-<epoch>-comparison.mp4`, which places
+prediction and ground truth side by side and reports each frame's position
+error (PE) and mean per-point error (ME).
 The MP4 uses the same renderer as `src/visualize_pc.py`; it requires `imageio`
 and `imageio-ffmpeg`, both listed in `requirements.txt`.
 
@@ -163,3 +162,18 @@ batch dimension before saving, so `predicted_point_cloud` has shape
 Use `guidance_scale > 1.0` only if the model was trained with a nonzero
 `condition_drop_rate`. The default `guidance_scale=1.0` uses the conditional
 model directly.
+
+## Checkpoint comparison CLI
+
+Use `visualize_pc_checkpoint.py` to load a saved checkpoint, sample a selected
+HDF5 trajectory, and save the predicted-versus-ground-truth comparison MP4:
+
+```bash
+PYTHONPATH=src python src/visualize_pc_checkpoint.py \
+  --checkpoint outputs/pc_dit_8layers/checkpoint-2500 \
+  --sample training_dataset/sample_0
+```
+
+The script uses the `config.yaml` next to the checkpoint directory by default.
+Use `--output`, `--num-inference-steps`, `--guidance-scale`, or `--seed` to
+override the output path and sampling settings.

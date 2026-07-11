@@ -20,7 +20,7 @@ from dataset.pc_dataset import PCDataset
 from model.pc_dit import PCDiT
 from options import PCTrainingConfig
 from pipeline_pc import PCPipeline
-from visualize_pc import save_pointcloud_comparison_mp4, save_pointcloud_mp4
+from visualize_pc import save_pointcloud_comparison_mp4
 
 
 def initialize_trackers(accelerator, args):
@@ -186,7 +186,6 @@ def main(args):
                 ground_truth_point_cloud = torch.cat(
                     [visualization_batch["points_src"].unsqueeze(1), visualization_batch["points_tgt"]], dim=1
                 ).squeeze(0).cpu().numpy()
-                save_pointcloud_mp4(predicted_point_cloud, vis_dir / f"epoch-{epoch + 1:04d}.mp4")
                 save_pointcloud_comparison_mp4(
                     predicted_point_cloud,
                     ground_truth_point_cloud,
