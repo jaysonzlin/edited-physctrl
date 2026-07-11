@@ -29,6 +29,12 @@ def default_output_path(checkpoint_dir, sample_path):
     return Path(checkpoint_dir).parent / f"{Path(sample_path).parent.name}-comparison.mp4"
 
 
+def combine_initial_and_future(init_pc, predicted_future):
+    """Prepend the initial frame after aligning it with the sampled trajectory device."""
+    initial_frame = init_pc.to(predicted_future.device).unsqueeze(1)
+    return torch.cat([initial_frame, predicted_future], dim=1)
+
+
 def load_checkpoint_model(checkpoint_dir, config_path):
     config = OmegaConf.merge(OmegaConf.structured(PCTrainingConfig), OmegaConf.load(config_path))
     model = PCDiT(config.pc_size, 48, config.model_config)
@@ -82,7 +88,7 @@ def main(args):
         guidance_scale=args.guidance_scale,
         generator=generator,
     )
-    predicted_sequence = torch.cat([init_pc.unsqueeze(1), predicted_future], dim=1).squeeze(0).cpu().numpy()
+    predicted_sequence = combine_initial_and_future(init_pc, predicted_future).squeeze(0).cpu().numpy()
     save_pointcloud_comparison_mp4(predicted_sequence, ground_truth, output_path, fps=args.fps)
     print(f"Saved comparison video to {output_path}")
 
