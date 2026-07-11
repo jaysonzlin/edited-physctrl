@@ -2,6 +2,60 @@ from dataclasses import dataclass
 from typing import Dict, Optional, Tuple, List
 
 @dataclass
+class MCGConfig:
+    dataloader_num_workers: int 
+    pc_size: int
+    model_type: str
+    pred_offset: bool
+    model_config: Dict
+    train_dataset: Dict
+    vis_dir: str
+    eval_batch_size: int
+    seed: int
+    output_dir: str
+
+@dataclass
+class TrainingMCGConfig:
+    # Basic Configs
+    dataloader_num_workers: int
+    pc_size: int
+    model_type: str
+    pred_offset: bool
+    vis_dir: str
+    seed: Optional[int]
+    output_dir: str
+    logging_dir: str
+    report_to: Optional[str]
+    mixed_precision: str
+    tracker_project_name: str
+    push_to_hub: bool
+    hub_model_id: Optional[str]
+    hub_token: Optional[str]
+    gradient_checkpointing: bool
+    learning_rate: float
+    adam_beta1: float
+    adam_beta2: float
+    adam_weight_decay: float
+    adam_epsilon: float
+    lr_warmup_steps: int
+    max_grad_norm: float
+    checkpointing_steps: int
+    checkpoints_total_limit: Optional[int]
+    resume_from_checkpoint: Optional[str]
+    validation_steps: int
+    
+    # Training Loop config
+    train_batch_size: int
+    eval_batch_size: int
+    num_train_epochs: int
+    max_train_steps: int
+    gradient_accumulation_steps: int
+
+    # Sub-configs
+    model_config: Dict
+    train_dataset: Dict
+
+@dataclass
 class TrainingConfig:
     image_size: int
     # train_batch_size = 16

@@ -11,39 +11,6 @@ import gc
 import json
 import trimesh
 
-# --- MONKEY PATCH TO BYPASS EGL CRASH ON HEADLESS CLUSTERS ---
-# We don't render 2D images, so we disable the offscreen pyrender to prevent the Invalid device ID (0) issue.
-import genesis.vis.rasterizer
-import genesis.vis.visualizer
-genesis.vis.rasterizer.Rasterizer.build = lambda self: None
-genesis.vis.rasterizer.Rasterizer.destroy = lambda self: None
-# -------------------------------------------------------------
-
-# --- MONKEY PATCH FOR GENESIS ERRORS RELATED TO SINGULARITY CONTAINER USAGE ---
-import cuda.bindings.runtime
-_original_getattr = cuda.bindings.runtime.cudaDeviceGetAttribute
-
-def _patched_getattr(attr, device):
-    # Call the original hardware query
-    err, val = _original_getattr(attr, device)
-    
-    # If the driver fails to answer and returns None, intercept it!
-    if val is None:
-        print(f"[HOTFIX] Intercepted Error 35 for attribute: {attr}. Forcing H100 spec.")
-        
-        # If it's asking for shared memory, give it 227,328 bytes (H100 spec)
-        if "SharedMemory" in str(attr):
-            return (cuda.bindings.runtime.cudaError_t.cudaSuccess, 227328)
-        
-        # If it asks for anything else and fails, return 0 instead of None to prevent math crashes
-        return (cuda.bindings.runtime.cudaError_t.cudaSuccess, 0)
-        
-    return (err, val)
-
-# Override the function globally
-cuda.bindings.runtime.cudaDeviceGetAttribute = _patched_getattr
-# -----------------------------------------------------
-
 from utils.seeding import seed_everything
 from utils.loading import load_mesh
 from utils.visualization import save_pointcloud_video_genesis as save_pointcloud_video

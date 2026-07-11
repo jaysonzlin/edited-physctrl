@@ -4,11 +4,11 @@ model_type: "mdm_st"
 pred_offset: true
 vis_dir: "vis"
 seed: 0
-output_dir: ./outputs/dit_${model_config.n_layers}layers_${pc_size}p_${train_dataset.category}_${train_dataset.n_training_frames}frames_pointembed_latent${model_config.latent_dim}_2gpus_base
-train_batch_size: 2
-eval_batch_size: 4
+output_dir: ./outputs/dit_${model_config.n_layers}layers_${pc_size}p_${train_dataset.category}_${train_dataset.n_training_frames}frames_pointembed_latent${model_config.latent_dim}_cond_on_first_pc_1gpus_base
+train_batch_size: 3
+eval_batch_size: 3
 num_train_epochs: 50
-max_train_steps: 60000
+max_train_steps: 1000 # Lower this to 1000 (It takes 2 hours for one gpu to do 500 steps)
 gradient_accumulation_steps: 25
 gradient_checkpointing: false
 learning_rate: 1e-4
@@ -21,10 +21,10 @@ max_grad_norm: 1.0
 logging_dir: logs
 mixed_precision: 'bf16'
 report_to: 'wandb'
-checkpointing_steps: 2500
-checkpoints_total_limit: 10
+checkpointing_steps: 100 # Lower this to 250
+checkpoints_total_limit: 4
 resume_from_checkpoint: latest
-validation_steps: 0
+validation_steps: 100
 # validation_train_steps: 2000
 # validation_sanity_check: true
 tracker_project_name: 'mcg_baseline'
@@ -37,8 +37,10 @@ model_config:
   n_layers: 8
   transformer_block: "SpatialTemporalTransformerBlock"
   floor_cond: true
+  cond_on_first_pc: true
 train_dataset:
-  dataset_path: "src/data_generation/data/3d_primitives/h5"
+  dataset_path: "data_generation/data/3d_primitives/train/h5"
+  val_dataset_path: "data_generation/data/3d_primitives/val/h5"
   mode: "diff"
   n_training_frames: 24
   n_frames_interval: 2
