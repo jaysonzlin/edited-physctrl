@@ -3,6 +3,7 @@
 import argparse
 import math
 import os
+import re
 from pathlib import Path
 
 import torch
@@ -19,7 +20,7 @@ from dataset.pc_dataset import PCDataset
 from model.pc_dit import PCDiT
 from options import PCTrainingConfig
 from pipeline_pc import PCPipeline
-from visualize_pc import save_pointcloud_mp4
+from visualize_pc import save_pointcloud_comparison_mp4, save_pointcloud_mp4
 
 
 def initialize_trackers(accelerator, args):
@@ -36,6 +37,29 @@ def initialize_trackers(accelerator, args):
 def should_save_visualization(epoch):
     """Return whether the zero-indexed epoch completes a 100-epoch interval."""
     return (epoch + 1) % 100 == 0
+
+
+def load_resume_checkpoint(accelerator, checkpoint, output_dir):
+    """Restore an Accelerate checkpoint and return its completed optimizer step."""
+    if checkpoint is None:
+        return 0
+
+    if checkpoint == "latest":
+        candidates = [path for path in Path(output_dir).glob("checkpoint-*") if path.is_dir()]
+        if not candidates:
+            raise FileNotFoundError(f"No checkpoint-* directories found in {output_dir}")
+        checkpoint_path = max(candidates, key=lambda path: int(path.name.removeprefix("checkpoint-")))
+    else:
+        checkpoint_path = Path(checkpoint)
+
+    if not checkpoint_path.is_dir():
+        raise FileNotFoundError(f"Checkpoint directory does not exist: {checkpoint_path}")
+    match = re.fullmatch(r"checkpoint-(\d+)", checkpoint_path.name)
+    if match is None:
+        raise ValueError(f"Checkpoint directory must be named checkpoint-<step>, got {checkpoint_path.name}")
+
+    accelerator.load_state(str(checkpoint_path))
+    return int(match.group(1))
 
 
 def main(args):
@@ -84,13 +108,24 @@ def main(args):
     updates_per_epoch = math.ceil(len(dataloader) / args.gradient_accumulation_steps)
     num_train_epochs = math.ceil(max_train_steps / updates_per_epoch)
     noise_scheduler = DDPMScheduler(num_train_timesteps=1000, prediction_type="sample", clip_sample=False)
-    progress_bar = tqdm(range(max_train_steps), disable=not accelerator.is_local_main_process, desc="Steps")
+    global_step = load_resume_checkpoint(accelerator, args.resume_from_checkpoint, output_dir)
+    if global_step > max_train_steps:
+        raise ValueError(f"Checkpoint step {global_step} exceeds max_train_steps {max_train_steps}")
+    first_epoch = global_step // updates_per_epoch
+    resume_batch_step = (global_step % updates_per_epoch) * args.gradient_accumulation_steps
+    progress_bar = tqdm(
+        range(max_train_steps),
+        initial=global_step,
+        disable=not accelerator.is_local_main_process,
+        desc="Steps",
+    )
 
-    global_step = 0
-    for epoch in range(num_train_epochs):
+    for epoch in range(first_epoch, num_train_epochs):
         model.train()
         visualization_batch = None
-        for batch, _ in dataloader:
+        for batch_step, (batch, _) in enumerate(dataloader):
+            if epoch == first_epoch and batch_step < resume_batch_step:
+                continue
             if visualization_batch is None:
                 visualization_batch = {key: value[:1].detach() for key, value in batch.items()}
             with accelerator.accumulate(model):
@@ -145,10 +180,18 @@ def main(args):
                     device=accelerator.device,
                     batch_size=1,
                 )
-                point_cloud = torch.cat(
+                predicted_point_cloud = torch.cat(
                     [visualization_batch["points_src"].unsqueeze(1), prediction], dim=1
                 ).squeeze(0).cpu().numpy()
-                save_pointcloud_mp4(point_cloud, vis_dir / f"epoch-{epoch + 1:04d}.mp4")
+                ground_truth_point_cloud = torch.cat(
+                    [visualization_batch["points_src"].unsqueeze(1), visualization_batch["points_tgt"]], dim=1
+                ).squeeze(0).cpu().numpy()
+                save_pointcloud_mp4(predicted_point_cloud, vis_dir / f"epoch-{epoch + 1:04d}.mp4")
+                save_pointcloud_comparison_mp4(
+                    predicted_point_cloud,
+                    ground_truth_point_cloud,
+                    vis_dir / f"epoch-{epoch + 1:04d}-comparison.mp4",
+                )
                 model.train()
             accelerator.wait_for_everyone()
         if global_step >= max_train_steps:

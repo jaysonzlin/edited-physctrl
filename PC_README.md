@@ -77,12 +77,22 @@ Accelerate checkpoint every `checkpointing_steps` under:
 <output_dir>/checkpoint-<step>/
 ```
 
+To resume, set `resume_from_checkpoint` in `src/configs/config_pc.yaml` to an
+explicit checkpoint directory, such as
+`./outputs/pc_dit_8layers/checkpoint-2500`, or to `latest` to select the
+highest-numbered checkpoint under `output_dir`. The loader restores the model,
+optimizer, scheduler, and training state, then skips the batches already
+completed within the resumed epoch.
+
 There is intentionally no validation split or validation loop. Set
 `condition_drop_rate` above zero only when you want classifier-free guidance at
 inference; its default is `0.0`.
 
 At the end of every 100th epoch, the trainer samples one training example and
 saves a generated trajectory to `<output_dir>/<vis_dir>/epoch-<epoch>.mp4`.
+It also saves `<output_dir>/<vis_dir>/epoch-<epoch>-comparison.mp4`, which
+places prediction and ground truth side by side and reports each frame's
+position error (PE) and mean per-point error (ME).
 The MP4 uses the same renderer as `src/visualize_pc.py`; it requires `imageio`
 and `imageio-ffmpeg`, both listed in `requirements.txt`.
 
